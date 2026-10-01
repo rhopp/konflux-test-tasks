@@ -28,6 +28,11 @@ annotated layer is skipped when the descriptor `size` is at least 2000MiB
 `--dry-run` listing is used when those annotations are absent (same name
 list).
 
+## Version 0.3.5:
+Archive detection and extraction now run through bounded parallel `bsdtar`
+workers, limited by `clamd-max-threads`. Detection remains content-based, and
+the previous serial extractor is used if parallel processing fails.
+
 ## --max-filesize: 
 Is set to the same value as the default value according to the ClamAV official Documentation.
 
@@ -45,7 +50,7 @@ https://docs.clamav.net/manual/Development/tips-and-tricks.html?highlight=max-fi
 | docker-auth              | Unused, should be removed in next task version.                        |               |
 | ca-trust-config-map-name | The name of the ConfigMap to read CA bundle data from.                 | trusted-ca    |
 | ca-trust-config-map-key  | The name of the key in the ConfigMap that contains the CA bundle data. | ca-bundle.crt |
-| clamd-max-threads        | Maximum number of threads clamd runs.                                  | 8             |
+| clamd-max-threads        | Maximum number of clamd threads and parallel archive workers.           | 8             |
 
 ## Results:
 

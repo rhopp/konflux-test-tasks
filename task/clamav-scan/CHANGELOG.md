@@ -2,6 +2,14 @@
 
 <!-- Format guidelines: https://keepachangelog.com/en/1.1.0/#how -->
 
+## 0.3.5
+
+### Changed
+
+- Detect and extract nested archives with bounded parallel `bsdtar` workers
+  while preserving content-based detection and falling back to the previous
+  serial extractor if parallel processing fails.
+
 ## 0.3.4
 
 ### Added
