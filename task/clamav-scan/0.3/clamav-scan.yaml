@@ -2,7 +2,7 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   labels:
-    app.kubernetes.io/version: "0.3.4"
+    app.kubernetes.io/version: "0.3.5"
   annotations:
     tekton.dev/pipelines.minVersion: "0.12.1"
     tekton.dev/tags: "virus, konflux"
@@ -35,7 +35,7 @@ spec:
       description: The name of the key in the ConfigMap that contains the CA bundle data.
       default: ca-bundle.crt
     - name: clamd-max-threads
-      description: Maximum number of threads clamd runs.
+      description: Maximum number of clamd threads and parallel archive workers.
       default: "8"
     - name: skip-upload
       description: If true, skips uploading the results to the image registry. Useful for read-only tests.
@@ -82,7 +82,7 @@ spec:
         # scans each file directly instead of recursing through archive layers,
         # which is faster. bsdtar detects archives by content, not extension
         # (the scanned payload can be an extension-less blob).
-        extract_archives() {
+        extract_archives_serial() {
           local dir="$1"
           find "$dir" -type f -print0 | while IFS= read -r -d "" f; do
             # Treat as an archive only if bsdtar can list at least one entry.
@@ -91,7 +91,7 @@ spec:
               mkdir -p "$out"
               if bsdtar -xf "$f" -C "$out" >/dev/null 2>&1; then
                 rm -f "$f"
-                extract_archives "$out"
+                extract_archives_serial "$out"
               else
                 # Extraction failed: drop the dir if empty and leave the
                 # original file in place for clamd to scan.
@@ -99,6 +99,81 @@ spec:
               fi
             fi
           done
+        }
+
+        # Probe and extract archives with a bounded pool of bsdtar workers.
+        # Candidate lists are snapshotted before extraction so workers never
+        # race the directory walk. NUL-delimited files preserve arbitrary
+        # path names, including embedded newlines.
+        extract_archives_parallel() {
+          bash -s -- "$1" "$MAX_THREADS" <<'BASH'
+        set -euo pipefail
+
+        root=$1
+        workers=$2
+        batch_size=64
+
+        if [[ ! "$workers" =~ ^[1-9][0-9]*$ ]]; then
+          echo "clamd-max-threads must be a positive integer" >&2
+          exit 1
+        fi
+
+        work_dir=$(mktemp -d -t clamav-bsdtar.XXXXXXXXXX)
+        trap 'rm -rf -- "$work_dir"' EXIT
+        pending="$work_dir/pending"
+        candidates="$work_dir/candidates"
+        next="$work_dir/next"
+        parts="$work_dir/parts"
+
+        printf '%s\0' "$root" > "$pending"
+
+        while [[ -s "$pending" ]]; do
+          : > "$candidates"
+          while IFS= read -r -d '' directory; do
+            find "$directory" -type f -print0 >> "$candidates"
+          done < "$pending"
+
+          rm -rf -- "$parts"
+          mkdir -p -- "$parts"
+
+          xargs -0 -r -P "$workers" -n "$batch_size" \
+            bash -c '
+              set -euo pipefail
+              parts_dir=$1
+              shift
+              part=$(mktemp "$parts_dir/part.XXXXXXXXXX")
+
+              for path in "$@"; do
+                if bsdtar -tf "$path" 2>/dev/null | grep -q .; then
+                  output="${path}.d"
+                  mkdir -p -- "$output"
+                  if bsdtar -xf "$path" -C "$output" >/dev/null 2>&1; then
+                    rm -f -- "$path"
+                    printf "%s\0" "$output" >> "$part"
+                  else
+                    rmdir -- "$output" 2>/dev/null || true
+                    printf "Warning: could not extract archive %q\n" "$path" >&2
+                  fi
+                fi
+              done
+            ' _ "$parts" < "$candidates"
+
+          : > "$next"
+          shopt -s nullglob
+          for part in "$parts"/part.*; do
+            cat -- "$part" >> "$next"
+          done
+          shopt -u nullglob
+          mv -f -- "$next" "$pending"
+        done
+        BASH
+        }
+
+        extract_archives() {
+          if ! extract_archives_parallel "$1"; then
+            echo "Warning: parallel archive extraction failed; using serial extraction." >&2
+            extract_archives_serial "$1"
+          fi
         }
 
         # Start clamd in background
