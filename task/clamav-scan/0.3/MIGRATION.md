@@ -6,8 +6,11 @@ content-based, including for extension-less OCI blobs and nested archives. If
 parallel processing fails, the task falls back to the previous serial
 extraction behavior.
 
-There are no new parameters or results. `clamd-max-threads` also bounds the
-number of parallel archive workers. No action is required from users.
+The new optional `archive-extraction-mode` parameter accepts `legacy` or
+`accelerated` and defaults to `legacy`, so existing users retain the previous
+serial behavior. Set it to `accelerated` to enable the speed-up.
+`clamd-max-threads` also bounds the number of parallel archive workers. There
+are no new results.
 
 ---
 

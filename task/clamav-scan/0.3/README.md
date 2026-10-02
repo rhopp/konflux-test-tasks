@@ -29,9 +29,11 @@ annotated layer is skipped when the descriptor `size` is at least 2000MiB
 list).
 
 ## Version 0.3.5:
-Archive detection and extraction now run through bounded parallel `bsdtar`
-workers, limited by `clamd-max-threads`. Detection remains content-based, and
-the previous serial extractor is used if parallel processing fails.
+The new `archive-extraction-mode` parameter selects `legacy` serial extraction
+or `accelerated` bounded parallel `bsdtar` workers. It defaults to `legacy` so
+existing users keep the previous behavior. Accelerated workers are limited by
+`clamd-max-threads`; detection remains content-based, and processing falls back
+to the serial extractor if the accelerated implementation fails.
 
 ## --max-filesize: 
 Is set to the same value as the default value according to the ClamAV official Documentation.
@@ -51,6 +53,7 @@ https://docs.clamav.net/manual/Development/tips-and-tricks.html?highlight=max-fi
 | ca-trust-config-map-name | The name of the ConfigMap to read CA bundle data from.                 | trusted-ca    |
 | ca-trust-config-map-key  | The name of the key in the ConfigMap that contains the CA bundle data. | ca-bundle.crt |
 | clamd-max-threads        | Maximum number of clamd threads and parallel archive workers.           | 8             |
+| archive-extraction-mode  | Archive pre-extraction implementation: `legacy` or `accelerated`.        | legacy        |
 
 ## Results:
 
